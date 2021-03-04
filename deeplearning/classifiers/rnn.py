@@ -137,7 +137,27 @@ class CaptioningRNN(object):
         # defined above to store loss and gradients; grads[k] should give the      #
         # gradients for self.params[k].                                            #
         ############################################################################
-        pass
+        N, D = features.shape
+        h0, h0_cache = temporal_affine_forward(features.reshape(N, 1, D), W_proj, b_proj)
+        N, T, H = h0.shape
+        h0 = h0.reshape(N, H)
+        word_vectors, word_cache = word_embedding_forward(captions_in, W_embed)
+        if self.cell_type == 'rnn':
+            hidden_states, rnn_cache = rnn_forward(word_vectors, h0, Wx, Wh, b)
+        scores, score_cache = temporal_affine_forward(hidden_states, W_vocab, b_vocab)
+        loss, dx = temporal_softmax_loss(scores, captions_out, mask)
+
+        dx_score, dW_vocab, db_vocab = temporal_affine_backward(dx, score_cache)
+        if self.cell_type == 'rnn':
+          dx_word_vectors, dh0, dWx, dWh, db = rnn_backward(dx_score, rnn_cache)
+        dW_embed = word_embedding_backward(dx_word_vectors, word_cache)
+        dx_features, dW_proj, db_proj = temporal_affine_backward(dh0.reshape(N, T, H), h0_cache)
+
+        grads['W_proj'], grads['b_proj'] = dW_proj, db_proj
+        grads['W_embed'] = dW_embed
+        grads['Wx'], grads['Wh'], grads['b'] = dWx, dWh, db
+        grads['W_vocab'], grads['b_vocab'] = dW_vocab, db_vocab
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -199,7 +219,19 @@ class CaptioningRNN(object):
         # functions; you'll need to call rnn_step_forward or lstm_step_forward in #
         # a loop.                                                                 #
         ###########################################################################
-        pass
+        N, D = features.shape
+        h0, _ = affine_forward(features, W_proj, b_proj)
+        h0 = h0.reshape(N, -1)
+        captions[:, 0] = self._start
+        prev_h = h0
+        for i in range(1, max_length):
+            embed_word, _ = word_embedding_forward(captions[:, i-1], W_embed)
+            if self.cell_type == 'rnn':
+              h, _ = rnn_step_forward(embed_word, prev_h, Wx, Wh, b)
+              prev_h = h
+            scores, _ = affine_forward(h, W_vocab, b_vocab)
+            captions[:, i] = np.argmax(scores, axis=1)
+            
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
