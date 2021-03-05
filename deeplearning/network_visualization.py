@@ -31,7 +31,10 @@ def compute_saliency_maps(X, y, model):
     # to each input image. You first want to compute the loss over the correct   #
     # scores, and then compute the gradients with torch.autograd.gard.           #
     ##############################################################################
-    pass
+    scores = model(X)
+    scores = scores.gather(1, y.view(-1, 1)).squeeze()
+    scores.backward(torch.FloatTensor([1.0]*scores.shape[0]))
+    saliency, _ = torch.max(X.grad.data.abs(), dim=1)
     ##############################################################################
     #                             END OF YOUR CODE                               #
     ##############################################################################
@@ -69,7 +72,16 @@ def make_fooling_image(X, target_y, model):
     # in fewer than 100 iterations of gradient ascent.                           #
     # You can print your progress over iterations to check your algorithm.       #
     ##############################################################################
-    pass
+    while True:
+        scores = model(X_fooling)
+        _, index = scores.data.max(dim=1)
+        if index[0] == target_y:
+            break
+        scores[0, target_y].backward()
+        g = X_fooling.grad.data
+        dX = learning_rate * g / torch.norm(g)
+        X_fooling.data += dX
+        X_fooling.grad.data.zero_()
     ##############################################################################
     #                             END OF YOUR CODE                               #
     ##############################################################################
@@ -98,7 +110,16 @@ def update_class_visulization(model, target_y, l2_reg, learning_rate, img):
     # L2 regularization term!                                              #
     # Be very careful about the signs of elements in your code.            #
     ########################################################################
-    pass
+    while True:
+        scores = model(img)
+        _, index = scores.data.max(dim=1)
+        if index[0] == target_y:
+            break
+        (scores[0, target_y] - l2_reg * torch.norm(img) ** 2).backward()
+        g = img.grad.data
+        dX = learning_rate * g / torch.norm(g)
+        img.data += dX
+        img.grad.data.zero_()
     ########################################################################
     #                             END OF YOUR CODE                         #
     ########################################################################
